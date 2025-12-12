@@ -1,3 +1,5 @@
+.libPaths("/home/dnanexus/R_libs")
+install.packages("readr")
 library(readr)
 
 # ------------------------------------------------------------------
@@ -133,3 +135,90 @@ overlap_ids <- intersect(mgus_ids, mm_ids)
 mgus_ids
 mm_ids
 overlap_ids
+
+
+library(dplyr)
+library(stringr)
+
+# -----------------------------
+# Helper: extract earliest date for a given ICD10 code
+# -----------------------------
+extract_icd10_date <- function(df, code, diag_col = "Diagnoses - ICD10",
+                               date_prefix = "Date of first in-patient diagnosis - ICD10 | Array ") {
+  
+  # All ICD10 date-array columns
+  date_cols <- grep(paste0("^", date_prefix), names(df), value = TRUE)
+  
+  out <- df %>%
+    rowwise() %>%
+    mutate(
+      # Replace NA with empty string, then split into entries
+      diag_entries = list(str_split(ifelse(is.na(.data[[diag_col]]), "", .data[[diag_col]]), "\\|")[[1]]),
+      
+      # Extract ICD10 code from each entry (e.g., "D47.2", "C90.0")
+      diag_codes = list(str_extract(unlist(diag_entries), "^[A-Z][0-9A-Z\\.]+")),
+      
+      # Positions (1-based) of matches in the diagnosis list
+      hit_pos = list(which(unlist(diag_codes) == code)),
+      
+      # Pull all date-array values from the same row (named by column)
+      date_vec = {
+        x <- c_across(all_of(date_cols))
+        names(x) <- date_cols
+        list(x)
+      },
+      
+      # Map positions -> Array index (0-based) -> date columns -> earliest date
+      hit_date = {
+        pos <- unlist(hit_pos)
+        
+        if (length(pos) == 0) {
+          as.Date(NA)
+        } else {
+          array_idx   <- pos - 1
+          needed_cols <- paste0(date_prefix, array_idx)
+          
+          dv <- unlist(date_vec)
+          cand_dates <- as.Date(as.character(dv[needed_cols]))
+          
+          if (all(is.na(cand_dates))) as.Date(NA) else min(cand_dates, na.rm = TRUE)
+        }
+      }
+    ) %>%
+    ungroup() %>%
+    select(`Participant ID`, hit_date)
+  
+  return(out)
+}
+
+# -----------------------------
+# 1) MGUS (D47.2): earliest MGUS diagnosis date
+# -----------------------------
+mgus_dates <- extract_icd10_date(mgus_data, code = "D47.2") %>%
+  rename(mgus_date = hit_date)
+
+mgus_hits <- mgus_dates %>% filter(!is.na(mgus_date))
+
+# -----------------------------
+# 2) Multiple Myeloma (C90.0): earliest MM diagnosis date
+# -----------------------------
+mm_dates <- extract_icd10_date(mgus_data, code = "C90.0") %>%
+  rename(mm_date = hit_date)
+
+mm_hits <- mm_dates %>% filter(!is.na(mm_date))
+
+# -----------------------------
+# 3) Left join: attach MM date to MGUS hits
+# -----------------------------
+mgus_hits_w_mm <- mgus_hits %>%
+  left_join(mm_dates, by = "Participant ID")
+
+# Quick checks
+nrow(mgus_hits_w_mm)
+sum(!is.na(mgus_hits_w_mm$mm_date))  # how many MGUS also have MM
+
+head(mgus_hits_w_mm)
+
+
+
+
