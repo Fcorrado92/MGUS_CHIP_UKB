@@ -18,14 +18,26 @@ mgus_data_v2<-data%>%dplyr::filter(`Read v2 code`%in%mgus_readv2)
 mgus_data<-rbind(mgus_data_v3, mgus_data_v2)
 
 #Select only cols ID and Date and then keep only first date
-mgus_data_filt<-mgus_data%>%select(`Participant ID`,`Date clinical code was entered`)
-colnames(mgus_data_filt)<-c("ID", "Date_MGUS")
+mgus_data_filt<-mgus_data%>%select(`Participant ID`,`Date clinical code was entered`, `Data provider`)
+colnames(mgus_data_filt)<-c("ID", "Date_MGUS","Data_Provider")
 
 mgus_data_filt_first_date <- mgus_data_filt %>%
   group_by(ID) %>%
   arrange(Date_MGUS) %>%          # sort by MGUS date (earliest first)
   slice(1) %>%                  # keep only the first row per participant
   ungroup()
+
+mgus_data_filt_first_date <- mgus_data_filt_first_date %>%
+  mutate(
+    censoring_date = case_when(
+      Data_Provider == "England (TPP)"     ~ as.Date("2016-05-31"),
+      Data_Provider == "England (Vision)"  ~ as.Date("2017-05-31"),
+      Data_Provider == "Scotland"          ~ as.Date("2017-03-31"),
+      Data_Provider == "Wales"             ~ as.Date("2017-08-31"),
+      TRUE ~ as.Date(NA)
+    )
+  )
+
 
 
 # -------------------------------------------------------------------------
@@ -73,16 +85,14 @@ mgus_data_filt_first_date<-mgus_data_filt_first_date%>%left_join(mm_data_filt_fi
 
 mgus_data_filt_first_date<-mgus_data_filt_first_date%>%mutate(delta=as.Date(Date_MM)-as.Date(Date_MGUS))
 
-#look at delta distribution
-distribution_delta<-ggplot(mgus_data_filt_first_date, aes(x=delta/30))+geom_histogram()+
-  labs(x="Months from MGUS to MM", y="n")+geom_vline(xintercept = 12, color="red", linetype="dashed")+theme_classic()
 
 
 # -------------------------------------------------------------------------
 #save dataframe and plot
 # -------------------------------------------------------------------------
-write_csv(mgus_data_filt_first_date,"/mnt/project/extract_fields_ttyd/mgus_data_GP.csv")
 mgus_data_filt_first_date$codes<-"GP"
+
+write_csv(mgus_data_filt_first_date,"/mnt/project/extract_fields_ttyd/mgus_data_GP.csv")
 
 
 

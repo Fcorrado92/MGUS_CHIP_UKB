@@ -281,3 +281,13 @@ final_mgus_data <- final_mgus_data %>%
   ungroup()
 
 write_csv(final_mgus_data,"~/mgus_data_CR_GP.csv")
+
+
+
+# -------------------------------------------------------------------------
+#look at distribution of delta
+# -------------------------------------------------------------------------
+distribution_delta<-ggplot(final_mgus_data, aes(x=delta/30))+geom_histogram()+
+  labs(x="Months from MGUS to MM", y="n")+geom_vline(xintercept = 12, color="red", linetype="dashed")+theme_classic()
+ggsave(distribution_delta, filename="~/distribution_delta_mgus.pdf", width = 8, height = 6)
+
