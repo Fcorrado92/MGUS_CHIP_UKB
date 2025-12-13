@@ -1,0 +1,89 @@
+.libPaths("/home/dnanexus/R_libs")
+install.packages("readr")
+library(readr)
+
+# -------------------------------------------------------------------------
+#extract codes from primary care data
+# -------------------------------------------------------------------------
+data<-read_csv("/mnt/project/extract_fields_ttyd/GP_clinical.csv")
+
+#MGUS codes CTV3 and R2
+mgus_ctv3<-c("C331.","C332.","C332z","Xa0l6","Xa0SJ","Xa36d","Xa36e","Xa36h","Xa36k","Xa36m","XaIt4","XE11b")
+mgus_readv2<-c("BBm7.",               "C3322",               "C3310",               "C331.",
+               "C332.",               "C332z")
+
+#select rows with MGUS codes
+mgus_data_v3<-data%>%dplyr::filter(`CTV3 (Read v3) code`%in%mgus_ctv3)
+mgus_data_v2<-data%>%dplyr::filter(`Read v2 code`%in%mgus_readv2)
+mgus_data<-rbind(mgus_data_v3, mgus_data_v2)
+
+#Select only cols ID and Date and then keep only first date
+mgus_data_filt<-mgus_data%>%select(`Participant ID`,`Date clinical code was entered`)
+colnames(mgus_data_filt)<-c("ID", "Date_MGUS")
+
+mgus_data_filt_first_date <- mgus_data_filt %>%
+  group_by(ID) %>%
+  arrange(Date_MGUS) %>%          # sort by MGUS date (earliest first)
+  slice(1) %>%                  # keep only the first row per participant
+  ungroup()
+
+
+# -------------------------------------------------------------------------
+#select MM cases
+# -------------------------------------------------------------------------
+
+
+#MM codes CTV3 and R2
+mm_ctv3<-c("B63..","B630.","B6300","B63z.","Xa0SI","Xa0SL","Xa0SN","Xa36a","Xa36b","Xa36c","Xa9AA",
+           "XaBB3","XaBLx","XaELI","XE20N")
+mm_readv2<-c("BBn2.","BBr30" ,"BBr3z", "BBr3.","BBn0.",
+             "BBnz.",
+             "BBn1.",
+             "BBn3.",
+             "BBn..",
+             "B6303",
+             "B630.",
+             "B63..",
+             "B936.",
+             "B631.",
+             "B6301",
+             "B936.")
+
+#select rows with MGUS codes
+mm_data_v3<-data%>%dplyr::filter(`CTV3 (Read v3) code`%in%mm_ctv3)
+mm_data_v2<-data%>%dplyr::filter(`Read v2 code`%in%mm_readv2)
+mm_data<-rbind(mm_data_v3, mm_data_v2)
+
+#Select only cols ID and Date and then keep only first date
+mm_data_filt<-mm_data%>%select(`Participant ID`,`Date clinical code was entered`)
+colnames(mm_data_filt)<-c("ID", "Date_MM")
+
+mm_data_filt_first_date <- mm_data_filt %>%
+  group_by(ID) %>%
+  arrange(Date_MM) %>%          # sort by mm date (earliest first)
+  slice(1) %>%                  # keep only the first row per participant
+  ungroup()
+
+
+# -------------------------------------------------------------------------
+#left join MGUS and MM
+# -------------------------------------------------------------------------
+
+mgus_data_filt_first_date<-mgus_data_filt_first_date%>%left_join(mm_data_filt_first_date, by="ID")
+
+mgus_data_filt_first_date<-mgus_data_filt_first_date%>%mutate(delta=as.Date(Date_MM)-as.Date(Date_MGUS))
+
+#look at delta distribution
+distribution_delta<-ggplot(mgus_data_filt_first_date, aes(x=delta/30))+geom_histogram()+
+  labs(x="Months from MGUS to MM", y="n")+geom_vline(xintercept = 12, color="red", linetype="dashed")+theme_classic()
+
+
+# -------------------------------------------------------------------------
+#save dataframe and plot
+# -------------------------------------------------------------------------
+write_csv(mgus_data_filt_first_date,"/mnt/project/extract_fields_ttyd/mgus_data_GP.csv")
+mgus_data_filt_first_date$codes<-"GP"
+
+
+
+
