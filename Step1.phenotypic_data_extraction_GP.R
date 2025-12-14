@@ -92,8 +92,7 @@ mgus_data_filt_first_date<-mgus_data_filt_first_date%>%mutate(delta=as.Date(Date
 # -------------------------------------------------------------------------
 mgus_data_filt_first_date$codes<-"GP"
 
-write_csv(mgus_data_filt_first_date,"/mnt/project/extract_fields_ttyd/mgus_data_GP.csv")
-
+write_csv(mgus_data_filt_first_date,"mgus_data_GP.csv")
 
 
 

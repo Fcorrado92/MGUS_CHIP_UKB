@@ -271,14 +271,43 @@ final_cancer_registry<-rbind(final_cancer_registry_HISTO, final_cancer_registry_
 final_cancer_registry<-final_cancer_registry%>%distinct(ID, .keep_all = TRUE)
 
 write_csv(final_cancer_registry,"~/mgus_data_CR.csv")
+final_cancer_registry<-read_csv("/mnt/project/outputs/mgus_data_CR.csv")
+
+colnames(mgus_data_filt_first_date)
+# [1] "ID"             "Date_MGUS"      "Data_Provider"  "censoring_date" "Date_MM"       
+# [6] "delta"          "codes"  
+
+colnames(final_cancer_registry)
+# [1] "ID"        "Date_MGUS" "Date_MM"   "delta"     "codes"  
+
+
+#Add new cols
+final_cancer_registry <- final_cancer_registry %>%
+  mutate(
+    Data_Provider  = NA_character_,
+    censoring_date = as.Date(NA)
+  )
+
+final_cancer_registry <- final_cancer_registry[
+  , c("ID","Date_MGUS","Data_Provider","censoring_date","Date_MM","delta","codes")
+]
 
 final_mgus_data<-rbind(final_cancer_registry, mgus_data_filt_first_date)
+
 final_mgus_data <- final_mgus_data %>%
   mutate(Date_MGUS = as.Date(Date_MGUS)) %>%   
   arrange( ID, Date_MGUS) %>%     
   group_by( ID) %>%
   slice(1) %>%
   ungroup()
+
+
+# -------------------------------------------------------------------------
+#load origin
+# -------------------------------------------------------------------------
+origin<-read_csv("/mnt/project/extract_fields_ttyd/")
+
+
 
 write_csv(final_mgus_data,"~/mgus_data_CR_GP.csv")
 
