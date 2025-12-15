@@ -272,6 +272,7 @@ final_cancer_registry<-final_cancer_registry%>%distinct(ID, .keep_all = TRUE)
 
 write_csv(final_cancer_registry,"~/mgus_data_CR.csv")
 final_cancer_registry<-read_csv("/mnt/project/outputs/mgus_data_CR.csv")
+mgus_data_filt_first_date<-read_csv("/mnt/project/outputs/mgus_data_GP.csv")
 
 colnames(mgus_data_filt_first_date)
 # [1] "ID"             "Date_MGUS"      "Data_Provider"  "censoring_date" "Date_MM"       
@@ -305,12 +306,84 @@ final_mgus_data <- final_mgus_data %>%
 # -------------------------------------------------------------------------
 #load origin
 # -------------------------------------------------------------------------
-origin<-read_csv("/mnt/project/extract_fields_ttyd/")
+origin<-read_csv("/mnt/project/extract_fields_ttyd/origin.csv")
+
+origin <- origin %>%
+  mutate(
+    country = case_when(
+      `UK Biobank assessment centre | Instance 0` %in% c("Cardiff", "Swansea", "Wrexham") ~ "Wales",
+      `UK Biobank assessment centre | Instance 0` %in% c("Edinburgh", "Glasgow") ~ "Scotland",
+      TRUE ~ "England"
+    )
+  )
+
+origin<-origin%>%select(`Participant ID`, country)
+colnames(origin)<-c("ID", "country")
+
+final_mgus_data<-final_mgus_data%>%left_join(origin, by="ID")
 
 
+# -------------------------------------------------------------------------
+#Add censoring date fro Cancer registry based on country
+# -------------------------------------------------------------------------
+
+final_mgus_data <- final_mgus_data %>%
+  mutate(
+    censoring_date = if_else(
+      is.na(censoring_date),
+      case_when(
+        country == "England"  ~ as.Date("2023-05-31"),
+        country == "Scotland" ~ as.Date("2023-09-30"),
+        country == "Wales"    ~ as.Date("2016-12-31")
+      ),
+      censoring_date
+    )
+  )
+
+
+# -------------------------------------------------------------------------
+#Add Death date
+# -------------------------------------------------------------------------
+death_db<-read_csv("/mnt/project/extract_fields_ttyd/death_register.csv")
+death_mgus<-death_db%>%filter(`Participant ID`%in%unique(final_mgus_data$ID))
+death_mgus<-death_mgus[c(1,2)]
+colnames(death_mgus)<-c("ID", "Date_Death")
+final_mgus_data<-final_mgus_data%>%left_join(death_mgus, by="ID")
+
+# censoring dates are registry-specific and depend on region and outcomes
+# Deaths occurring after the registry censoring date are treated as censored (Event = 0),
+# because cancer outcomes after the censoring date are unknown.
+
+final_mgus_data <- final_mgus_data %>%
+  mutate(
+    Event = case_when(
+      # 1 = Multiple Myeloma diagnosis
+      !is.na(Date_MM) ~ 1,
+      
+      # 2 = Death before administrative censoring
+      is.na(Date_MM) &
+        !is.na(Date_Death) &
+        Date_Death <= censoring_date ~ 2,
+      
+      # 0 = Censored
+      TRUE ~ 0
+    )
+  )
+
+final_mgus_data <- final_mgus_data %>%
+  mutate(
+    Last_Date = case_when(
+      Event == 0 ~ censoring_date,
+      Event == 1 ~ Date_MM,
+      Event == 2 ~ Date_Death,
+      TRUE ~ as.Date(NA)
+    )
+  )
+
+final_mgus_data <- final_mgus_data %>%
+  mutate(PFS_mos=(Last_Date-Date_MGUS)/30)
 
 write_csv(final_mgus_data,"~/mgus_data_CR_GP.csv")
-
 
 
 # -------------------------------------------------------------------------

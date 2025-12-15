@@ -1,5 +1,10 @@
-.libPaths("/home/dnanexus/R_libs")
+library(renv)
+renv::init()
 install.packages("readr")
+install.packages("survminer")
+install.packages("cmprsk")
+install.packages("tidycmprsk")
+
 library(readr)
 
 # -------------------------------------------------------------------------
