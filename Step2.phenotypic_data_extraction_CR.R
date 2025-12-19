@@ -384,7 +384,115 @@ final_mgus_data <- final_mgus_data %>%
   mutate(PFS_mos=(Last_Date-Date_MGUS)/30)
 
 write_csv(final_mgus_data,"~/mgus_data_CR_GP.csv")
+final_mgus_data<-read_csv("/mnt/project/outputs/mgus_data_CR_GP.csv")
+CHIP<-read_csv("/mnt/project/extract_fields_ttyd/CHIP_calls.csv")
 
+CHIP_filt<-CHIP%>%filter(`Participant ID`%in%unique(final_mgus_data$ID))
+CHIP_filt$ID<-CHIP_filt$`Participant ID`
+
+
+# -------------------------------------------------------------------------
+#Format CHIP df
+# -------------------------------------------------------------------------
+get_k <- function(x) str_match(x, regex("Array\\s*(\\d+)", ignore_case = TRUE))[,2]
+
+make_chip_long2 <- function(df,
+                            id_col = "Participant ID",
+                            nvar_col = "Clonal haematopoiesis of indeterminate potential (CHIP) number of variants") {
+  
+  cn <- names(df)
+  
+  variant_cols <- cn[str_detect(cn, regex("\\bCHIP\\b.*\\bvariant\\b.*Array", ignore_case = TRUE))] %>%
+    setdiff(cn[str_detect(cn, regex("\\bVAF\\b", ignore_case = TRUE))])  # evita di prendere anche VAF
+  
+  vaf_cols <- cn[str_detect(cn, regex("\\bvariant allele frequency\\b|\\bVAF\\b", ignore_case = TRUE)) &
+                   str_detect(cn, regex("Array", ignore_case = TRUE))]
+  
+  if (length(variant_cols) == 0) stop("Non trovo colonne CHIP variant | Array k.")
+  if (length(vaf_cols) == 0) stop("Non trovo colonne VAF | Array k.")
+  
+  # ---- pivot VARIANT (character) ----
+  var_long <- df %>%
+    select(all_of(c(id_col, nvar_col)), all_of(variant_cols)) %>%
+    pivot_longer(
+      cols = all_of(variant_cols),
+      names_to = "variant_col",
+      values_to = "variant"
+    ) %>%
+    mutate(array_k = get_k(variant_col)) %>%
+    select(-variant_col)
+  
+  # ---- pivot VAF (numeric) ----
+  vaf_long <- df %>%
+    select(all_of(c(id_col)), all_of(vaf_cols)) %>%
+    pivot_longer(
+      cols = all_of(vaf_cols),
+      names_to = "vaf_col",
+      values_to = "vaf"
+    ) %>%
+    mutate(array_k = get_k(vaf_col)) %>%
+    select(-vaf_col)
+  
+  # ---- join + gene ----
+  out <- var_long %>%
+    left_join(vaf_long, by = c(id_col, "array_k")) %>%
+    mutate(
+      gene = str_extract(as.character(variant), "^[^:]+"),
+      vaf  = suppressWarnings(as.numeric(vaf))
+    ) %>%
+    filter(!is.na(variant), variant != "", !is.na(gene)) %>%
+    arrange(.data[[id_col]], as.integer(array_k))
+  
+  out
+}
+
+chip_long <- make_chip_long2(CHIP_filt)
+chip_wide_summary <- chip_long %>%
+  group_by(`Participant ID`) %>%
+  summarise(
+    n_variants = first(`Clonal haematopoiesis of indeterminate potential (CHIP) number of variants`),
+    gene_vaf = paste0(gene, "=", vaf) %>% paste(collapse = "; "),
+    .groups = "drop"
+  )
+
+chip_wide_summary<-chip_wide_summary%>%rename(ID="Participant ID")
+final_mgus_data<-final_mgus_data%>%left_join(chip_wide_summary, by="ID")
+
+final_mgus_data<-final_mgus_data%>%mutate(n_variants=ifelse(is.na(n_variants), 0, n_variants))
+final_mgus_data<-final_mgus_data%>%mutate(CHIP_bi=ifelse(n_variants>0, "YES", "NO"))
+
+
+library(dplyr)
+library(tidycmprsk)
+library(survival)
+
+df <- final_mgus_data %>%
+  mutate(
+    PFS_mos = as.numeric(PFS_mos),
+    Event   = as.integer(Event),
+    # cuminc vuole factor con 1° livello = censored
+    status  = factor(case_when(
+      Event == 0 ~ "censored",
+      Event == 1 ~ "event",
+      Event == 2 ~ "competing",
+      TRUE ~ NA_character_
+    ), levels = c("censored", "event", "competing")),
+    CHIP_bi = factor(CHIP_bi)   # meglio come factor
+  ) %>%
+  filter(!is.na(PFS_mos), !is.na(status), !is.na(CHIP_bi))
+
+ci <- tidycmprsk::cuminc(Surv(PFS_mos, status) ~ CHIP_bi, data = df)
+ci
+
+ggsurvfit::ggcuminc(ci, outcome = "event") +
+  labs(
+    x = "Months",
+    y = "Cumulative incidence Progression",
+    color = "CHIP status"
+  ) +
+  theme_classic(base_size = 16) +
+  add_risktable()+
+  scale_color_manual(values = c("#808080", "#1f78b4"))
 
 # -------------------------------------------------------------------------
 #look at distribution of delta
