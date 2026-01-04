@@ -433,3 +433,67 @@ pdf("~/Partners HealthCare Dropbox/Francesco Corrado/CHIP_Immune_RNAseq/PCROWD_P
 print(pcrowd_inc_plot_treatment)
 
 dev.off()
+
+
+
+# -------------------------------------------------------------------------
+#Mean VAF
+# -------------------------------------------------------------------------
+colnames(sub_filt2)
+
+chip_genes <- c(
+  "PPM1D", "DNMT3A", "JAK2", "TP53", "SRSF2", "TET2", "U2AF1",
+  "GNB1", "KRAS", "SF3B1", "ZNF318", "IDH1", "ASXL1", "ZBTB33"
+)
+
+sub_filt2 <- sub_filt2 %>%
+  rowwise() %>%
+  mutate(
+    mean_vaf = {
+      v <- c_across(all_of(chip_genes))
+      v[is.na(v)] <- 0          # 🔑 trasforma NA in 0
+      v_pos <- v[v > 0]
+      if (length(v_pos) == 0) 0 else mean(v_pos)
+    }
+  ) %>%
+  ungroup()
+
+sub_filt2 <- sub_filt2 %>%
+  mutate(
+    mean_vaf_group = case_when(
+      CHIP %in% c("CHIP neg", "N") | is.na(mean_vaf) | mean_vaf == 0 ~ "CHIP neg",
+      mean_vaf < 0.1 ~ "<10%",
+      mean_vaf > 0.1 ~ ">10%",
+      TRUE ~ NA_character_
+    ),
+    mean_vaf_group = factor(
+      mean_vaf_group,
+      levels = c("CHIP neg", "<10%", ">10%")
+    )
+  )
+
+sub_filt2_chip_only<-sub_filt2%>%filter(CHIP=="Y")
+ci <- tidycmprsk::cuminc(Surv(PFS_mos, status) ~ mean_vaf_group, data = sub_filt2_chip_only)
+
+p_prog  <- ci$cmprsk$Tests[1, "pv"]  # cause 1 = progression
+p_death <- ci$cmprsk$Tests[2, "pv"]  # cause 2 = death
+
+chip_vaf_CR<-ggsurvfit::ggcuminc(ci, outcome = "progression") +
+  annotate(
+    "text",
+    x = Inf, y = -Inf,
+    label = paste0("Gray p = ", scales::pvalue(p_prog, accuracy = 0.001)),
+    hjust = 1.05, vjust = -0.8,
+    size = 5
+  ) +
+  add_risktable()+
+  labs(x="Months", y="Cumulative incidence Progression", color="Mean VAF") +
+  theme_classic(base_size = 16) 
+
+ggsave(  filename = "~/Partners HealthCare Dropbox/Francesco Corrado/CHIP_Immune_RNAseq/PCROWD_PLCO_Analysis/PCROWD/CR_VAF_PCROWD.pdf",
+         plot = chip_vaf_CR,
+         width = 8,
+         height = 6)
+
+write_csv(sub_filt2,"~/Partners HealthCare Dropbox/Francesco Corrado/CHIP_Immune_RNAseq/PCROWD_PLCO_Analysis/PCROWD/Competitive_risk_pcrowd.csv")
+

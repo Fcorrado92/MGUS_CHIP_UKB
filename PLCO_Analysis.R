@@ -638,3 +638,5 @@ ggsave(  filename = "~/Partners HealthCare Dropbox/Francesco Corrado/CHIP_Immune
          plot = chip_vaf_CR,
          width = 8,
          height = 6)
+
+write_csv(plco_mg_filt_cr,"~/Partners HealthCare Dropbox/Francesco Corrado/CHIP_Immune_RNAseq/PCROWD_PLCO_Analysis/PLCO/Competitive_risk_plco.csv")
