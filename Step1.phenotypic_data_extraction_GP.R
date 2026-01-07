@@ -53,16 +53,6 @@ mgus_data_filt_first_date <- mgus_data_filt %>%
   slice(1) %>%                  # keep only the first row per participant
   ungroup()
 
-mgus_data_filt_first_date <- mgus_data_filt_first_date %>%
-  mutate(
-    censoring_date = case_when(
-      Data_Provider == "England (TPP)"     ~ as.Date("2016-05-31"),
-      Data_Provider == "England (Vision)"  ~ as.Date("2017-05-31"),
-      Data_Provider == "Scotland"          ~ as.Date("2017-03-31"),
-      Data_Provider == "Wales"             ~ as.Date("2017-08-31"),
-      TRUE ~ as.Date(NA)
-    )
-  )
 
 
 
